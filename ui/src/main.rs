@@ -2,14 +2,14 @@ use gloo_net::http::{Request};
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 
-#[function_component(HelloWorld)]
-fn hello_server() -> Html {
-    let data = use_state(|| None);
+#[function_component(SlotNum)]
+fn slot_num() -> Html {
+    let slot = use_state(|| None);
 
     {
-        let data = data.clone();
+        let slot = slot.clone();
         use_effect(move || {
-            if data.is_none() {
+            if slot.is_none() {
                 spawn_local(async move {
                     let resp = Request::get("http://localhost:8000/slot").send().await.unwrap();
                     let result = {
@@ -23,7 +23,7 @@ fn hello_server() -> Html {
                             resp.text().await.map_err(|err| err.to_string())
                         }
                     };
-                    data.set(Some(result));
+                    slot.set(Some(result));
                 });
             }
 
@@ -31,7 +31,7 @@ fn hello_server() -> Html {
         });
     }
 
-    match data.as_ref() {
+    match slot.as_ref() {
         None => {
             html! {
                 <div>{"No server response"}</div>
@@ -39,7 +39,7 @@ fn hello_server() -> Html {
         }
         Some(Ok(data)) => {
             html! {
-                <div>{"Got server response: "}{data}</div>
+                <div>{"Slot: "}{data}</div>
             }
         }
         Some(Err(err)) => {
@@ -50,9 +50,63 @@ fn hello_server() -> Html {
     }
 }
 
+#[function_component(EpochNum)]
+fn epoch_num() -> Html {
+    let epoch = use_state(|| None);
+
+    {
+        let epoch = epoch.clone();
+        use_effect(move || {
+            if epoch.is_none() {
+                spawn_local(async move {
+                    let resp = Request::get("http://localhost:8000/epoch").send().await.unwrap();
+                    let result = {
+                        if !resp.ok() {
+                            Err(format!(
+                                "Error fetching data {} ({})",
+                                resp.status(),
+                                resp.status_text()
+                            ))
+                        } else {
+                            resp.text().await.map_err(|err| err.to_string())
+                        }
+                    };
+                    epoch.set(Some(result));
+                });
+            }
+
+            || {}
+        });
+    }
+
+    match epoch.as_ref() {
+        None => {
+            html! {
+                <div>{"No server response"}</div>
+            }
+        }
+        Some(Ok(data)) => {
+            html! {
+                <div>{"Epoch: "}{data}</div>
+            }
+        }
+        Some(Err(err)) => {
+            html! {
+                <div>{"Error requesting data from server: "}{err}</div>
+            }
+        }
+    }
+}
+
+
 #[function_component(App)]
 fn app() -> Html {
-	html! { <HelloWorld /> }
+	html! { 
+		<>
+			<SlotNum /> 
+			<EpochNum />
+		</>
+	}
 }
 
 
