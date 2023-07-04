@@ -1,6 +1,9 @@
+use std::error;
 use gloo_net::http::{Request};
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
+
+type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
 
 #[function_component(SlotNum)]
 fn slot_num() -> Html {
@@ -11,18 +14,7 @@ fn slot_num() -> Html {
         use_effect(move || {
             if slot.is_none() {
                 spawn_local(async move {
-                    let resp = Request::get("http://localhost:8000/slot").send().await.unwrap();
-                    let result = {
-                        if !resp.ok() {
-                            Err(format!(
-                                "Error fetching data {} ({})",
-                                resp.status(),
-                                resp.status_text()
-                            ))
-                        } else {
-                            resp.text().await.map_err(|err| err.to_string())
-                        }
-                    };
+                    let result = get_data("http://localhost:8000/slot").await;
                     slot.set(Some(result));
                 });
             }
@@ -50,6 +42,7 @@ fn slot_num() -> Html {
     }
 }
 
+
 #[function_component(EpochNum)]
 fn epoch_num() -> Html {
     let epoch = use_state(|| None);
@@ -59,22 +52,10 @@ fn epoch_num() -> Html {
         use_effect(move || {
             if epoch.is_none() {
                 spawn_local(async move {
-                    let resp = Request::get("http://localhost:8000/epoch").send().await.unwrap();
-                    let result = {
-                        if !resp.ok() {
-                            Err(format!(
-                                "Error fetching data {} ({})",
-                                resp.status(),
-                                resp.status_text()
-                            ))
-                        } else {
-                            resp.text().await.map_err(|err| err.to_string())
-                        }
-                    };
+                    let result = get_data("http://localhost:8000/epoch").await;
                     epoch.set(Some(result));
                 });
             }
-
             || {}
         });
     }
@@ -96,6 +77,23 @@ fn epoch_num() -> Html {
             }
         }
     }
+}
+
+async fn get_data(url: &str) -> Result<String> {
+	let resp = Request::get(url).send().await?;
+	let result = {
+		if !resp.ok() {
+			Err(format!(
+				"Error fetching data {} ({})",
+				resp.status(),
+				resp.status_text()
+			))
+		} else {
+			resp.text().await.map_err(|err| err.to_string())
+		}
+	};
+
+	Ok(result?)
 }
 
 
