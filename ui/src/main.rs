@@ -1,5 +1,4 @@
 use std::error;
-use gloo_net::http::Request;
 use gloo_net::websocket::{Message, futures::WebSocket};
 use futures::StreamExt;
 use wasm_bindgen_futures::spawn_local;
@@ -54,49 +53,35 @@ fn epoch_num() -> Html {
         let epoch = epoch.clone();
         use_effect(move || {
             if epoch.is_none() {
+                let ws = WebSocket::open("ws://localhost:8000/epoch").unwrap();
+                let (_, mut read) = ws.split();
+
                 spawn_local(async move {
-                    let result = get_data("http://localhost:8000/epoch").await;
-                    epoch.set(Some(result));
+                    while let Some(msg) = read.next().await {
+                        let result = msg.unwrap();
+                        match result {
+                            Message::Text(text) => {
+                                epoch.set(Some(text));
+                            },
+                            _ => {},
+                        };
+                    }
                 });
             }
             || {}
         });
     }
 
-    match epoch.as_ref() {
-        None => {
-            html! {
-                <div>{"No server response"}</div>
+    html! {
+        <div id="epoch">
+            { 
+              match epoch.as_ref() {
+                None => html! {},
+                Some(data) => html! { format!("Epoch: {}", data) },
+              }
             }
-        }
-        Some(Ok(data)) => {
-            html! {
-                <div>{"Epoch: "}{data}</div>
-            }
-        }
-        Some(Err(err)) => {
-            html! {
-                <div>{"Error requesting data from server: "}{err}</div>
-            }
-        }
+        </div>
     }
-}
-
-async fn get_data(url: &str) -> Result<String> {
-	let resp = Request::get(url).send().await?;
-	let result = {
-		if !resp.ok() {
-			Err(format!(
-				"Error fetching data {} ({})",
-				resp.status(),
-				resp.status_text()
-			))
-		} else {
-			resp.text().await.map_err(|err| err.to_string())
-		}
-	};
-
-	Ok(result?)
 }
 
 

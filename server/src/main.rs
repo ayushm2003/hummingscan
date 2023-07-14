@@ -1,4 +1,4 @@
-use actix_web::{get, App, HttpResponse, HttpServer, Responder, middleware::Logger, web, HttpRequest, rt};
+use actix_web::{get, App, HttpResponse, HttpServer, middleware::Logger, web, HttpRequest, rt};
 use actix_cors::Cors;
 use tokio::time::{self, Duration};
 use dotenv::dotenv;
@@ -32,7 +32,7 @@ async fn slot_num() -> Result<u64> {
 					.unwrap()
 					.as_secs();
 	
-	println!("{timestamp}");
+	// println!("{timestamp}");
 	Ok((timestamp - time)/12)
 }
 
@@ -45,7 +45,7 @@ async fn slot(req: HttpRequest, body: web::Payload) -> Result<HttpResponse> {
 	let (response, mut session, mut _msg_stream) = actix_ws::handle(&req, body)?;
 
 	rt::spawn(async move {
-		let mut interval = time::interval(Duration::from_secs(10));
+		let mut interval = time::interval(Duration::from_secs(20));
 		loop {
 			interval.tick().await;
 			let slot_number = slot_num().await.unwrap();
@@ -57,18 +57,26 @@ async fn slot(req: HttpRequest, body: web::Payload) -> Result<HttpResponse> {
 }
 
 #[get("/epoch")]
-async fn epoch() -> impl Responder {
-	match epoch_num().await {
-		Ok(epoch_num) => HttpResponse::Ok().body(epoch_num.to_string()),
-        Err(_) => HttpResponse::InternalServerError().finish(),
-	}
+async fn epoch(req: HttpRequest, body: web::Payload) -> Result<HttpResponse> {
+	let (response, mut session, mut _msg_stream) = actix_ws::handle(&req, body)?;
+
+	rt::spawn(async move {
+		let mut interval = time::interval(Duration::from_secs(300));
+		loop {
+			interval.tick().await;
+			let slot_number = epoch_num().await.unwrap();
+			session.text(slot_number.to_string()).await.unwrap();
+		}
+	});
+
+	Ok(response)
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
 	dotenv().ok();
 	
-	env_logger::init_from_env(Env::default().default_filter_or("debug"));
+	env_logger::init_from_env(Env::default().default_filter_or("info"));
 
     HttpServer::new(|| {
         App::new()
