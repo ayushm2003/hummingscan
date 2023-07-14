@@ -1,5 +1,7 @@
 use std::error;
-use gloo_net::http::{Request};
+use gloo_net::http::Request;
+use gloo_net::websocket::{Message, futures::WebSocket};
+use futures::StreamExt;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 
@@ -13,35 +15,36 @@ fn slot_num() -> Html {
         let slot = slot.clone();
         use_effect(move || {
             if slot.is_none() {
+                let ws = WebSocket::open("ws://localhost:8000/slot").unwrap();
+                let (_, mut read) = ws.split();
+
                 spawn_local(async move {
-                    let result = get_data("http://localhost:8000/slot").await;
-                    slot.set(Some(result));
+                    while let Some(msg) = read.next().await {
+                        let result = msg.unwrap();
+                        match result {
+                            Message::Text(text) => {
+                                slot.set(Some(text));
+                            },
+                            _ => {},
+                        };
+                    }
                 });
             }
-
             || {}
         });
     }
 
-    match slot.as_ref() {
-        None => {
-            html! {
-                <div>{"No server response"}</div>
+    html! {
+        <div id="slot">
+            { 
+              match slot.as_ref() {
+                None => html! {},
+                Some(data) => html! { format!("Slot: {}", data) },
+              }
             }
-        }
-        Some(Ok(data)) => {
-            html! {
-                <div>{"Slot: "}{data}</div>
-            }
-        }
-        Some(Err(err)) => {
-            html! {
-                <div>{"Error requesting data from server: "}{err}</div>
-            }
-        }
+        </div>
     }
 }
-
 
 #[function_component(EpochNum)]
 fn epoch_num() -> Html {

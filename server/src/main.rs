@@ -1,10 +1,11 @@
-use actix_web::{get, App, HttpResponse, HttpServer, Responder};
+use actix_web::{get, App, HttpResponse, HttpServer, Responder, middleware::Logger, web, HttpRequest, rt};
 use actix_cors::Cors;
+use tokio::time::{self, Duration};
 use dotenv::dotenv;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::env;
 use std::error;
-
+use env_logger::Env;
 
 type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
 
@@ -20,7 +21,7 @@ struct GenesisData {
 
 async fn slot_num() -> Result<u64> {
 	let ep = env::var("BEACON_URL").expect("BEACON_URL must be set") + "/eth/v1/beacon/genesis";
-	println!("{ep}");
+	// println!("{ep}");
 	let client = reqwest::Client::new();
 	let resp = client.get(&ep).send().await?.text().await?;
 	let genesis: GenesisData = serde_json::from_str(&resp)?;
@@ -40,11 +41,19 @@ async fn epoch_num() -> Result<u64> {
 }
 
 #[get("/slot")]
-async fn slot() -> impl Responder {
-    match slot_num().await {
-        Ok(slot_num) => HttpResponse::Ok().body(slot_num.to_string()),
-        Err(_) => HttpResponse::InternalServerError().finish(),
-    }
+async fn slot(req: HttpRequest, body: web::Payload) -> Result<HttpResponse> {
+	let (response, mut session, mut _msg_stream) = actix_ws::handle(&req, body)?;
+
+	rt::spawn(async move {
+		let mut interval = time::interval(Duration::from_secs(10));
+		loop {
+			interval.tick().await;
+			let slot_number = slot_num().await.unwrap();
+			session.text(slot_number.to_string()).await.unwrap();
+		}
+	});
+
+	Ok(response)
 }
 
 #[get("/epoch")]
@@ -58,14 +67,17 @@ async fn epoch() -> impl Responder {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
 	dotenv().ok();
+	
+	env_logger::init_from_env(Env::default().default_filter_or("debug"));
 
-    HttpServer::new(|| 
+    HttpServer::new(|| {
         App::new()
 			.wrap(
-				Cors::new().supports_credentials().finish())
+				Cors::default().allow_any_origin())
+			.wrap(Logger::default())
 			.service(slot)
 			.service(epoch)
-    )
+	})
     .bind(("127.0.0.1", 8000))?
     .run()
     .await
