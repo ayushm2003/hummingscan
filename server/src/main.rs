@@ -19,6 +19,16 @@ struct GenesisData {
 	data: GenesisTime,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct ValidatorData {
+	data: Vec<ValidatorInfo>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ValidatorInfo {
+	status: String,
+}
+
 async fn slot_num() -> Result<u64> {
 	let ep = env::var("BEACON_URL").expect("BEACON_URL must be set") + "/eth/v1/beacon/genesis";
 	// println!("{ep}");
@@ -72,6 +82,31 @@ async fn epoch(req: HttpRequest, body: web::Payload) -> Result<HttpResponse> {
 	Ok(response)
 }
 
+#[get("/validator")]
+async fn validator(req: HttpRequest, body: web::Payload) -> Result<HttpResponse> {
+	let (response, mut session, mut _msg_stream) = actix_ws::handle(&req, body)?;
+	
+	let ep = env::var("BEACON_URL").expect("BEACON_URL must be set") + "/eth/v1/beacon/states/head/validators";
+	let client = reqwest::Client::new();
+
+	rt::spawn(async move {
+		let mut interval = time::interval(Duration::from_secs(300));
+		loop {
+			interval.tick().await;
+
+			let resp = client.get(&ep).send().await.unwrap().text().await.unwrap();
+			let v1: ValidatorData = serde_json::from_str(&resp).unwrap();
+			let val_num = v1.data.len();
+			let active_validators = v1.data.into_iter().filter(|v| v.status == "active_ongoing").collect::<Vec<_>>();
+			let val_act_num = active_validators.len();
+			let nums = format!("({}, {})", val_num, val_act_num);
+			session.text(nums).await.unwrap();
+		}
+	});
+
+	Ok(response)
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
 	dotenv().ok();
@@ -85,6 +120,7 @@ async fn main() -> std::io::Result<()> {
 			.wrap(Logger::default())
 			.service(slot)
 			.service(epoch)
+			.service(validator)
 	})
     .bind(("127.0.0.1", 8000))?
     .run()
